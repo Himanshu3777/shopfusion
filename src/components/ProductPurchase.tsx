@@ -22,6 +22,16 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
   const stock = variant ? variant.stock : product.stock;
   const outOfStock = stock <= 0;
 
+  /** Shopping needs login — send guests to login, then back to this product. */
+  const requireLogin = (res: Response): boolean => {
+    if (res.status === 401) {
+      const next = encodeURIComponent(window.location.pathname);
+      router.push(`/login?next=${next}`);
+      return true;
+    }
+    return false;
+  };
+
   const addToCart = async (): Promise<boolean> => {
     setBusy(true);
     try {
@@ -30,6 +40,7 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: product.id, variantId, quantity: qty }),
       });
+      if (requireLogin(r)) return false;
       const j = await r.json().catch(() => null);
       if (r.ok && j?.ok) {
         push("Added to cart", "success");
@@ -50,12 +61,14 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
     setBusy(true);
     try {
       const clear = await fetch("/api/cart", { method: "DELETE" });
+      if (requireLogin(clear)) return;
       if (!clear.ok) throw new Error("Could not start express checkout");
       const r = await fetch("/api/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: product.id, variantId, quantity: qty }),
       });
+      if (requireLogin(r)) return;
       const j = await r.json().catch(() => null);
       if (r.ok && j?.ok) {
         router.push("/checkout");
@@ -76,6 +89,7 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: product.id }),
       });
+      if (requireLogin(r)) return;
       const j = await r.json().catch(() => null);
       if (r.ok && j?.ok !== false) {
         setWishlisted(!wishlisted);
