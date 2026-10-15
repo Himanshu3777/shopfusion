@@ -1,1 +1,1 @@
-{"buildCommand":"prisma generate && prisma migrate deploy && next build"}
+{"buildCommand":"prisma generate && (prisma migrate resolve --rolled-back \"20261015121000_add_cod_provider\" || true) && prisma migrate deploy && next build"}
