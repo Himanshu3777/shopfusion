@@ -1,3 +1,1 @@
-{
-  "buildCommand": "prisma generate && prisma migrate deploy && next build"
-}
+{"buildCommand":"prisma generate && prisma migrate deploy && SEED_CATALOG_ONLY=1 npm run db:seed && next build"}
