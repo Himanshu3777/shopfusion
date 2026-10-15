@@ -204,3 +204,4 @@ verify with `git status` and a quick scan before pushing.
 - Email is mocked (console log) in dev; production mailer not wired.
 - Search is database `contains` queries — fine at this scale; a dedicated search engine (e.g. Postgres full-text/Trigram or Meilisearch) is the next step for large catalogs.
 - No Playwright E2E; journey covered at API integration level.
+- Login (Auth.js) requires `AUTH_SECRET` in production env vars; add it before the deploy that needs it — env changes only apply to new deployments.
