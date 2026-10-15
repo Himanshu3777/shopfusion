@@ -1,14 +1,15 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Role } from "@prisma/client";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { loginSchema } from "@/lib/validation";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(db),
-  session: { strategy: "database" },
+  // NOTE: Credentials provider only works with the JWT session strategy.
+  // ("database" strategy + credentials-only is rejected by Auth.js config
+  // validation and 500s every auth endpoint.)
+  session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
     Credentials({
@@ -31,12 +32,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      // database strategy: `user` is the full DB user (augmented with role)
-      const u = user as unknown as { id: string; role: Role };
+    async jwt({ token, user }) {
+      // Persist id + role into the JWT on sign-in
+      if (user) {
+        const u = user as unknown as { id: string; role: Role };
+        token.id = u.id;
+        token.role = u.role;
+      }
+      return token;
+    },
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id = u.id;
-        session.user.role = u.role;
+        session.user.id = token.id as string;
+        session.user.role = token.role as Role;
       }
       return session;
     },
