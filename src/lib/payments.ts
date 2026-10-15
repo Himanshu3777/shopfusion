@@ -63,3 +63,12 @@ export function configuredProvider(): PaymentProviderName {
   if (raw === "STRIPE" || raw === "RAZORPAY" || raw === "MOCK") return raw;
   return "MOCK";
 }
+
+/**
+ * COD orders are stored with provider "MOCK" + a mode marker in rawResponse
+ * (avoids a DB enum migration). Returns true for Cash on Delivery payments.
+ */
+export function isCODPayment(payment: { rawResponse?: unknown } | null | undefined): boolean {
+  if (!payment?.rawResponse || typeof payment.rawResponse !== "object") return false;
+  return (payment.rawResponse as Record<string, unknown>).mode === "cod";
+}

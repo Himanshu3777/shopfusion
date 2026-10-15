@@ -36,7 +36,6 @@ enum PaymentProvider {
   MOCK
   STRIPE
   RAZORPAY
-  COD
 }
 
 enum DiscountType {

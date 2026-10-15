@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { Card, Badge, Price } from "@/components/ui";
 import { formatINR } from "@/lib/pricing";
+import { isCODPayment } from "@/lib/payments";
 import {
   canTransition,
   ORDER_STATUS_LABELS,
@@ -137,8 +138,8 @@ export default async function OrderDetailPage({
           <Card className="p-4">
             <h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Payment</h3>
             <dl className="space-y-1 text-sm">
-              <div className="flex justify-between"><dt className="text-slate-500">Provider</dt><dd className="font-medium">{order.payment?.provider ?? "—"}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={order.paymentStatus === "PAID" ? "success" : "warning"}>{order.paymentStatus}</Badge></dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Method</dt><dd className="font-medium">{isCODPayment(order.payment) ? "💵 Cash on Delivery" : (order.payment?.provider ?? "—")}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={order.paymentStatus === "PAID" ? "success" : "warning"}>{isCODPayment(order.payment) && order.paymentStatus === "PENDING" ? "Pay on delivery" : order.paymentStatus}</Badge></dd></div>
             </dl>
           </Card>
           <Card className="p-4">

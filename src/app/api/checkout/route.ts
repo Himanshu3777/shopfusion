@@ -205,7 +205,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       await tx.payment.create({
         data: {
           orderId: order.id,
-          provider: isCOD ? "COD" : "MOCK",
+          // NOTE: COD is recorded as MOCK provider + mode marker (no DB enum
+          // change needed). Detect via isCODPayment() in src/lib/payments.ts.
+          provider: "MOCK",
           amount: inp.total,
           currency: "INR",
           // COD stays PENDING until cash is collected on delivery.
