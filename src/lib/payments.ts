@@ -2,6 +2,8 @@
  * Payment abstraction. Production providers (Stripe/Razorpay) plug in here;
  * dev/test use the safe MOCK provider which never moves real money.
  */
+import Razorpay from "razorpay";
+import crypto from "crypto";
 
 export type PaymentProviderName = "MOCK" | "STRIPE" | "RAZORPAY";
 
@@ -39,19 +41,85 @@ class MockGateway implements PaymentGateway {
   }
 }
 
-// Production gateways intentionally NOT implemented here.
-// To add one: implement PaymentGateway using the provider SDK with keys from
-// process.env (STRIPE_SECRET_KEY / RAZORPAY_KEY_ID...), never hardcode secrets,
-// then register it in `gatewayFor` below.
+// ---- Razorpay (UPI / cards / netbanking — GPay, PhonePe, Paytm etc.) ----
+
+export type RazorpayOrderData = {
+  id: string;
+  amount: number; // paise
+  currency: string;
+  receipt: string;
+};
+
+function razorpayClient(): Razorpay {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    throw new Error(
+      "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables."
+    );
+  }
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
+
+export function razorpayConfigured(): boolean {
+  return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+}
+
+export function razorpayPublicKey(): string {
+  return process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? process.env.RAZORPAY_KEY_ID ?? "";
+}
+
+/** Create a Razorpay order (amount in paise). Call server-side only. */
+export async function createRazorpayOrder(
+  amountRupees: number,
+  receipt: string,
+  notes?: Record<string, string>
+): Promise<RazorpayOrderData> {
+  const client = razorpayClient();
+  const amountPaise = Math.round(amountRupees * 100);
+  const order = await client.orders.create({
+    amount: amountPaise,
+    currency: "INR",
+    receipt: receipt.slice(0, 40),
+    notes,
+  });
+  return { id: order.id, amount: order.amount as number, currency: order.currency, receipt };
+}
+
+/** Verify Razorpay payment signature (HMAC-SHA256). Server-side only. */
+export function verifyRazorpaySignature(
+  razorpayOrderId: string,
+  razorpayPaymentId: string,
+  razorpaySignature: string
+): boolean {
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keySecret) return false;
+  const expected = crypto
+    .createHmac("sha256", keySecret)
+    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpaySignature));
+  } catch {
+    return false;
+  }
+}
+
+// Production gateways: Stripe intentionally NOT implemented (use Razorpay for India).
+// To add Stripe: implement PaymentGateway using the provider SDK with keys from
+// process.env, never hardcode secrets, then register it in `gatewayFor` below.
 
 export function gatewayFor(name: PaymentProviderName): PaymentGateway {
   switch (name) {
     case "MOCK":
       return new MockGateway();
-    case "STRIPE":
     case "RAZORPAY":
+      // Razorpay uses a two-step flow (create order → client checkout → verify),
+      // so it is handled directly in the checkout routes, not via charge().
+      throw new Error("Use createRazorpayOrder + verifyRazorpaySignature for Razorpay.");
+    case "STRIPE":
       throw new Error(
-        `${name} gateway is not configured. Provide API keys via environment variables and implement the gateway in src/lib/payments.ts.`
+        "Stripe gateway is not configured. Provide API keys via environment variables and implement the gateway in src/lib/payments.ts."
       );
     default:
       throw new Error(`Unknown payment provider: ${name}`);

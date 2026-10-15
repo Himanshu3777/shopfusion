@@ -11,6 +11,7 @@ import {
   type StatusEvent,
 } from "@/lib/orders";
 import CancelButton from "./CancelButton";
+import RetryPaymentButton from "./RetryPaymentButton";
 
 export const metadata = { title: "Order Details" };
 
@@ -141,6 +142,9 @@ export default async function OrderDetailPage({
               <div className="flex justify-between"><dt className="text-slate-500">Method</dt><dd className="font-medium">{isCODPayment(order.payment) ? "💵 Cash on Delivery" : (order.payment?.provider ?? "—")}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={order.paymentStatus === "PAID" ? "success" : "warning"}>{isCODPayment(order.payment) && order.paymentStatus === "PENDING" ? "Pay on delivery" : order.paymentStatus}</Badge></dd></div>
             </dl>
+            {order.payment?.provider === "RAZORPAY" && order.paymentStatus === "PENDING" && order.status !== "CANCELLED" && (
+              <RetryPaymentButton orderId={order.id} amount={Number(order.total)} />
+            )}
           </Card>
           <Card className="p-4">
             <h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Price details</h3>

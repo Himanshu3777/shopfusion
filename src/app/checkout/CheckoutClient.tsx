@@ -106,7 +106,8 @@ export default function CheckoutClient() {
   const [applying, setApplying] = useState(false);
 
   const [placing, setPlacing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"COD" | "MOCK">("COD");
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "MOCK" | "RAZORPAY">("COD");
+  const razorpayAvailable = !!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -183,6 +184,67 @@ export default function CheckoutClient() {
     }
   };
 
+  const loadRazorpayScript = () =>
+    new Promise<boolean>((resolve) => {
+      if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const payWithRazorpay = async (rz: {
+    keyId: string;
+    orderId: string;
+    amount: number;
+    currency: string;
+  }, orderIds: string[]) => {
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      push("Could not load payment gateway. Your order is saved — pay from My Orders.", "error");
+      router.push("/orders");
+      return;
+    }
+    const RazorpayCtor = (window as unknown as { Razorpay: new (o: object) => { open(): void } }).Razorpay;
+    const rzp = new RazorpayCtor({
+      key: rz.keyId,
+      amount: rz.amount,
+      currency: rz.currency,
+      name: "ShopFusion",
+      description: "Order payment",
+      order_id: rz.orderId,
+      theme: { color: "#7c3aed" },
+      modal: {
+        ondismiss: () => {
+          push("Payment window closed. Your order is saved — complete payment from My Orders.", "info");
+          router.push("/orders");
+        },
+      },
+      handler: async (resp: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+        try {
+          const v = await api<{ orders: { id: string; orderNumber: string; total: number; paymentProvider: string }[] }>(
+            "/api/checkout/verify",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                razorpayOrderId: resp.razorpay_order_id,
+                razorpayPaymentId: resp.razorpay_payment_id,
+                razorpaySignature: resp.razorpay_signature,
+                orderIds,
+              }),
+            }
+          );
+          router.push(`/checkout/success?orders=${encodeURIComponent(JSON.stringify(v.orders))}`);
+        } catch (e) {
+          push(e instanceof Error ? e.message : "Payment verification failed", "error");
+          router.push("/orders");
+        }
+      },
+    });
+    rzp.open();
+  };
+
   const placeOrder = async () => {
     if (!selectedAddressId) {
       push("Select a delivery address", "error");
@@ -191,7 +253,10 @@ export default function CheckoutClient() {
     }
     setPlacing(true);
     try {
-      const result = await api<{ orders: { id: string; orderNumber: string; total: number; paymentProvider: string }[] }>(
+      const result = await api<{
+        orders: { id: string; orderNumber: string; total: number; paymentProvider: string }[];
+        razorpay: { keyId: string; orderId: string; amount: number; currency: string } | null;
+      }>(
         "/api/checkout",
         {
           method: "POST",
@@ -202,6 +267,12 @@ export default function CheckoutClient() {
           }),
         }
       );
+      if (result.razorpay) {
+        // Online payment: open Razorpay (UPI / cards). Orders stay PENDING until verified.
+        setPlacing(false);
+        await payWithRazorpay(result.razorpay, result.orders.map((o) => o.id));
+        return;
+      }
       router.push(`/checkout/success?orders=${encodeURIComponent(JSON.stringify(result.orders))}`);
     } catch (e) {
       push(e instanceof Error ? e.message : "Checkout failed", "error");
@@ -403,6 +474,32 @@ export default function CheckoutClient() {
                     </p>
                   </div>
                 </label>
+                {razorpayAvailable && (
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                      paymentMethod === "RAZORPAY"
+                        ? "border-fusion-600 bg-fusion-50 dark:bg-fusion-950"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === "RAZORPAY"}
+                      onChange={() => setPaymentMethod("RAZORPAY")}
+                      className="mt-1"
+                      aria-label="Pay online with UPI"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                        📱 UPI / Online <Badge tone="brand">GPay · PhonePe · Paytm</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Pay securely with UPI, cards or netbanking. Your money is protected.
+                      </p>
+                    </div>
+                  </label>
+                )}
                 <label
                   className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
                     paymentMethod === "MOCK"
@@ -450,6 +547,8 @@ export default function CheckoutClient() {
                   <Spinner size="sm" />
                 ) : paymentMethod === "COD" ? (
                   `Book now · Pay ${formatINR(cart?.summary.total ?? 0)} on delivery`
+                ) : paymentMethod === "RAZORPAY" ? (
+                  `Pay ${formatINR(cart?.summary.total ?? 0)} with UPI`
                 ) : (
                   `Place order · ${formatINR(cart?.summary.total ?? 0)}`
                 )}

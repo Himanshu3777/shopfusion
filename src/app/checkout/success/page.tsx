@@ -45,6 +45,8 @@ export default async function CheckoutSuccessPage({
                 <div className="text-sm text-slate-500">
                   {o.paymentProvider === "COD" ? (
                     <Badge tone="warning">💵 Cash on Delivery</Badge>
+                  ) : o.paymentProvider === "RAZORPAY" ? (
+                    <Badge tone="success">📱 Paid online (UPI)</Badge>
                   ) : (
                     <Badge tone="success">Paid</Badge>
                   )}

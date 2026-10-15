@@ -11,7 +11,13 @@ import {
   formatINR,
   type CouponLike,
 } from "@/lib/pricing";
-import { gatewayFor, configuredProvider } from "@/lib/payments";
+import {
+  gatewayFor,
+  configuredProvider,
+  createRazorpayOrder,
+  razorpayConfigured,
+  razorpayPublicKey,
+} from "@/lib/payments";
 import { orderConfirmationMail } from "@/lib/email";
 import { pushHistory } from "@/lib/orders";
 import type { Prisma } from "@prisma/client";
@@ -42,6 +48,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await requireUser();
   const body = checkoutSchema.parse(await req.json());
   const isCOD = body.paymentProvider === "COD";
+  const isRazorpay = body.paymentProvider === "RAZORPAY";
+  if (isRazorpay && !razorpayConfigured()) {
+    throw new ApiError(503, "Online payment is not set up yet. Please choose Cash on Delivery.");
+  }
 
   // 1. Address (own only) — snapshot onto each order.
   const address = await db.address.findFirst({
@@ -207,14 +217,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           orderId: order.id,
           // NOTE: COD is recorded as MOCK provider + mode marker (no DB enum
           // change needed). Detect via isCODPayment() in src/lib/payments.ts.
-          provider: "MOCK",
+          provider: isRazorpay ? "RAZORPAY" : "MOCK",
           amount: inp.total,
           currency: "INR",
-          // COD stays PENDING until cash is collected on delivery.
+          // COD / Razorpay stay PENDING until cash collected / online verified.
           status: "PENDING",
           rawResponse: isCOD
             ? { mode: "cod", note: "Cash on Delivery — collect on handover" }
-            : undefined,
+            : isRazorpay
+              ? { mode: "razorpay", note: "Awaiting online payment" }
+              : undefined,
         },
       });
       await tx.notification.create({
@@ -257,10 +269,38 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     return created;
   });
 
-  // 7. Charge via the configured gateway (MOCK → auto PAID), then email.
-  //    COD orders skip the online charge entirely — cash is collected on delivery.
+  // 7. Payment handling per method, then email.
   const results: { id: string; orderNumber: string; total: number; paymentProvider: string }[] = [];
-  if (!isCOD) {
+  let razorpay: { keyId: string; orderId: string; amount: number; currency: string } | null = null;
+
+  if (isRazorpay) {
+    // Create ONE Razorpay order for the grand total; client completes it via
+    // Razorpay Checkout (UPI / cards / netbanking), then calls /api/checkout/verify.
+    const grandTotal = createdOrders.reduce((s, o) => s + o.total, 0);
+    const receipt = createdOrders.map((o) => o.orderNumber).join(",").slice(0, 40);
+    const rpOrder = await createRazorpayOrder(grandTotal, receipt || `SF-${Date.now()}`, {
+      customer: user.email ?? "",
+    });
+    for (const o of createdOrders) {
+      await db.payment.update({
+        where: { orderId: o.id },
+        data: {
+          rawResponse: {
+            mode: "razorpay",
+            razorpayOrderId: rpOrder.id,
+            note: "Awaiting online payment",
+          },
+        },
+      });
+    }
+    razorpay = {
+      keyId: razorpayPublicKey(),
+      orderId: rpOrder.id,
+      amount: rpOrder.amount,
+      currency: rpOrder.currency,
+    };
+  } else if (!isCOD) {
+    // MOCK: charge via the configured gateway (auto PAID).
     const gateway = gatewayFor(configuredProvider());
     for (const o of createdOrders) {
       try {
@@ -294,19 +334,24 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
     }
   }
+  // COD skips online charge entirely — cash is collected on delivery.
+
   for (const o of createdOrders) {
-    try {
-      await orderConfirmationMail(
-        user.email,
-        o.orderNumber,
-        formatINR(o.total),
-        isCOD ? "Pay in cash when your order arrives." : undefined
-      );
-    } catch (e) {
-      console.error("[checkout] confirmation email failed", e);
+    // Send confirmation email now for COD/MOCK; for Razorpay after verification.
+    if (!isRazorpay) {
+      try {
+        await orderConfirmationMail(
+          user.email,
+          o.orderNumber,
+          formatINR(o.total),
+          isCOD ? "Pay in cash when your order arrives." : undefined
+        );
+      } catch (e) {
+        console.error("[checkout] confirmation email failed", e);
+      }
     }
-    results.push({ ...o, paymentProvider: isCOD ? "COD" : "MOCK" });
+    results.push({ ...o, paymentProvider: isCOD ? "COD" : isRazorpay ? "RAZORPAY" : "MOCK" });
   }
 
-  return ok({ orders: results }, 201);
+  return ok({ orders: results, razorpay }, 201);
 });

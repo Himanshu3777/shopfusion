@@ -86,5 +86,5 @@ export const cartItemSchema = z.object({
 export const checkoutSchema = z.object({
   addressId: z.string().min(1),
   couponCode: z.string().max(30).optional().nullable(),
-  paymentProvider: z.enum(["MOCK", "COD"]).default("MOCK"),
+  paymentProvider: z.enum(["MOCK", "COD", "RAZORPAY"]).default("MOCK"),
 });
