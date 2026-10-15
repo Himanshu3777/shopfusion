@@ -412,6 +412,75 @@ async function main() {
   }
   console.log(`  products: ${productCount}`);
 
+  // ---- Bulk generated catalog (SEED_BULK=1) ----
+  // Deterministic ~2.8k extra products via bulk inserts. Idempotent: SKUs that
+  // already exist are skipped, so re-runs are cheap and safe.
+  if (process.env.SEED_BULK === "1") {
+    const { generateCatalog } = await import("./catalog-generator");
+    const items = generateCatalog();
+    const existingSkus = new Set(
+      (await db.product.findMany({ select: { sku: true } })).map((p) => p.sku)
+    );
+    const fresh = items.filter((p) => !existingSkus.has(p.sku));
+    console.log(`  bulk catalog: ${items.length} generated, ${fresh.length} new`);
+    const CHUNK = 1000;
+    const rows = fresh.map((p) => {
+      const categoryId = catIdBySlug.get(p.category);
+      const brandId = brandIdByName.get(p.brand);
+      if (!categoryId || !brandId) throw new Error(`Missing category/brand for ${p.sku}`);
+      return {
+        name: p.name,
+        slug: slugify(p.name),
+        description: p.description,
+        sku: p.sku,
+        price: p.price,
+        discountPrice: p.discountPrice,
+        stock: p.stock,
+        isActive: true,
+        brandId,
+        categoryId,
+        sellerId: seller.id,
+        avgRating: p.rating,
+        reviewCount: p.reviews,
+      };
+    });
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await db.product.createMany({ data: rows.slice(i, i + CHUNK) });
+    }
+    if (fresh.length > 0) {
+      const idBySku = new Map(
+        (
+          await db.product.findMany({
+            where: { sku: { in: fresh.map((p) => p.sku) } },
+            select: { id: true, sku: true },
+          })
+        ).map((p) => [p.sku, p.id] as const)
+      );
+      const images = fresh.map((p) => ({
+        productId: idBySku.get(p.sku)!,
+        url: ph(p.name, p.color),
+        alt: p.name,
+        position: 0,
+      }));
+      const variants = fresh.flatMap((p) =>
+        (p.variants ?? []).map((v) => ({
+          productId: idBySku.get(p.sku)!,
+          name: v.name,
+          sku: v.sku,
+          price: null,
+          stock: v.stock,
+        }))
+      );
+      for (let i = 0; i < images.length; i += CHUNK) {
+        await db.productImage.createMany({ data: images.slice(i, i + CHUNK) });
+      }
+      for (let i = 0; i < variants.length; i += CHUNK) {
+        await db.productVariant.createMany({ data: variants.slice(i, i + CHUNK) });
+      }
+      console.log(`  bulk images: ${images.length}, variants: ${variants.length}`);
+    }
+  }
+
   // ---- Coupon ----
   await db.coupon.upsert({
     where: { code: "WELCOME10" },
