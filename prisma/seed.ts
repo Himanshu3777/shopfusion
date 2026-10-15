@@ -253,6 +253,65 @@ async function main() {
     }
   }
 
+  // ---- Real daily-life products (SEED_REAL=1) ----
+  // Recognizable brands with real photos and indicative MRPs.
+  // Idempotent: upserts by SKU, so re-runs are cheap and safe.
+  if (process.env.SEED_REAL === "1") {
+    const { REAL_BRANDS, REAL_PRODUCTS } = await import("./real-products");
+    let realImages: Record<string, string> = {};
+    try {
+      realImages = JSON.parse(readFileSync(join(__dirname, "real-product-images.json"), "utf8"));
+    } catch {
+      console.log("  real images: real-product-images.json not found, using placeholders");
+    }
+    for (const name of REAL_BRANDS) {
+      const bslug = slugify(name);
+      const b = await db.brand.upsert({
+        where: { slug: bslug },
+        update: { name, isActive: true },
+        create: { name, slug: bslug, isActive: true },
+      });
+      brandIdByName.set(name, b.id);
+    }
+    let realCount = 0;
+    for (const p of REAL_PRODUCTS) {
+      const categoryId = catIdBySlug.get(p.category);
+      const brandId = brandIdByName.get(p.brand);
+      if (!categoryId || !brandId) throw new Error(`Missing category/brand for ${p.sku}`);
+      const pslug = slugify(p.name);
+      const imageUrl = realImages[p.sku] || ph(p.name, "6D28D9");
+      const fields = {
+        name: p.name,
+        slug: pslug,
+        description: p.description,
+        price: p.price,
+        discountPrice: p.discountPrice,
+        stock: p.stock,
+        isActive: true,
+        brandId,
+        categoryId,
+        sellerId: seller.id,
+        avgRating: p.rating,
+        reviewCount: p.reviews,
+      };
+      const existing = await db.product.findUnique({ where: { sku: p.sku } });
+      let productId: string;
+      if (existing) {
+        await db.product.update({ where: { sku: p.sku }, data: fields });
+        await db.productImage.deleteMany({ where: { productId: existing.id } });
+        productId = existing.id;
+      } else {
+        const created = await db.product.create({ data: { ...fields, sku: p.sku } });
+        productId = created.id;
+      }
+      await db.productImage.create({
+        data: { productId, url: imageUrl, alt: p.name, position: 0 },
+      });
+      realCount++;
+    }
+    console.log(`  real products: ${realCount}`);
+  }
+
   // ---- Coupon ----
   await db.coupon.upsert({
     where: { code: "WELCOME10" },

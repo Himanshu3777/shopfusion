@@ -31,6 +31,13 @@ export function ProductCard({ product }: { product: ProductCardData }) {
             src={product.image.url}
             alt={product.image.alt ?? product.name}
             loading="lazy"
+            onError={(e) => {
+              const el = e.currentTarget;
+              if (!el.dataset.fbk) {
+                el.dataset.fbk = "1";
+                el.src = `https://placehold.co/600x600/6D28D9/white?text=${encodeURIComponent(product.name)}`;
+              }
+            }}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
         ) : (

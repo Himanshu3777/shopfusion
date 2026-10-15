@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { queryProducts, toURLSearchParams } from "@/lib/catalog";
-import { FilterSidebar } from "@/components/FilterSidebar";
 import { ProductGrid } from "@/components/ProductGrid";
 import { Loading } from "@/components/ui";
 
@@ -34,15 +33,7 @@ async function CategoryListing({ params, searchParams }: Props) {
   const categoryIds = [category.id, ...category.children.map((c) => c.id)];
   const paramsObj = toURLSearchParams(sp);
 
-  const [result, categories, brands] = await Promise.all([
-    queryProducts(paramsObj, { categoryId: { in: categoryIds } }),
-    db.category.findMany({
-      where: { isActive: true, parentId: null },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, slug: true, children: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, slug: true } } },
-    }),
-    db.brand.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, slug: true } }),
-  ]);
+  const result = await queryProducts(paramsObj, { categoryId: { in: categoryIds } });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -55,15 +46,10 @@ async function CategoryListing({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="mt-6">
         <Suspense>
-          <FilterSidebar categories={categories} brands={brands} />
+          <ProductGrid items={result.items} page={result.page} totalPages={result.totalPages} total={result.total} />
         </Suspense>
-        <div className="min-w-0 flex-1">
-          <Suspense>
-            <ProductGrid items={result.items} page={result.page} totalPages={result.totalPages} total={result.total} />
-          </Suspense>
-        </div>
       </div>
     </div>
   );
