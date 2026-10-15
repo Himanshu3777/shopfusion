@@ -310,6 +310,13 @@ async function main() {
       realCount++;
     }
     console.log(`  real products: ${realCount}`);
+
+    // Deactivate all fake/generated products so the storefront only shows real products.
+    const deactivated = await db.product.updateMany({
+      where: { sku: { not: { startsWith: "REAL-" } } },
+      data: { isActive: false },
+    });
+    console.log(`  deactivated fake products: ${deactivated.count}`);
   }
 
   // ---- Coupon ----
