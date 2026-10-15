@@ -106,6 +106,7 @@ export default function CheckoutClient() {
   const [applying, setApplying] = useState(false);
 
   const [placing, setPlacing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "MOCK">("COD");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -190,14 +191,14 @@ export default function CheckoutClient() {
     }
     setPlacing(true);
     try {
-      const result = await api<{ orders: { id: string; orderNumber: string; total: number }[] }>(
+      const result = await api<{ orders: { id: string; orderNumber: string; total: number; paymentProvider: string }[] }>(
         "/api/checkout",
         {
           method: "POST",
           body: JSON.stringify({
             addressId: selectedAddressId,
             couponCode: cart?.coupon.code ?? null,
-            paymentProvider: "MOCK",
+            paymentProvider: paymentMethod,
           }),
         }
       );
@@ -246,6 +247,11 @@ export default function CheckoutClient() {
 
       {step === 1 && (
         <div className="space-y-4">
+          <div className="rounded-xl bg-fusion-50 p-4 dark:bg-fusion-950">
+            <p className="text-sm font-medium text-fusion-800 dark:text-fusion-200">
+              🏠 Home Delivery — select where your order should be delivered
+            </p>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             {addresses.map((a) => (
               <Card
@@ -370,17 +376,60 @@ export default function CheckoutClient() {
               </button>
             </Card>
             <Card className="p-5">
-              <h3 className="mb-2 font-semibold text-slate-900 dark:text-white">Payment method</h3>
-              <div className="flex items-center gap-2">
-                <Badge tone="brand">MOCK</Badge>
-                <span className="text-sm font-medium">Test payment</span>
+              <h3 className="mb-3 font-semibold text-slate-900 dark:text-white">Payment method</h3>
+              <div className="space-y-3">
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                    paymentMethod === "COD"
+                      ? "border-fusion-600 bg-fusion-50 dark:bg-fusion-950"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "COD"}
+                    onChange={() => setPaymentMethod("COD")}
+                    className="mt-1"
+                    aria-label="Cash on Delivery"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                      💵 Cash on Delivery
+                      <Badge tone="success">Recommended</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Pay in cash when your order arrives at your doorstep. No online payment needed.
+                    </p>
+                  </div>
+                </label>
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                    paymentMethod === "MOCK"
+                      ? "border-fusion-600 bg-fusion-50 dark:bg-fusion-950"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "MOCK"}
+                    onChange={() => setPaymentMethod("MOCK")}
+                    className="mt-1"
+                    aria-label="Test online payment"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                      🧪 Test payment <Badge tone="brand">MOCK</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Simulates an approved online payment — <strong>no real money will be charged</strong>.
+                    </p>
+                  </div>
+                </label>
               </div>
-              <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                This store is in test mode. The MOCK provider simulates an approved payment —
-                <strong> no real money will be charged</strong>.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                {activeItems.length} item(s) will be split into one order per seller.
+              <p className="mt-3 text-xs text-slate-500">
+                {activeItems.length} item(s) will be split into one order per seller. Home delivery to your selected address.
               </p>
             </Card>
           </div>
@@ -397,7 +446,13 @@ export default function CheckoutClient() {
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep(2)}>Back</Button>
               <Button onClick={placeOrder} disabled={placing || activeItems.length === 0}>
-                {placing ? <Spinner size="sm" /> : `Place order · ${formatINR(cart?.summary.total ?? 0)}`}
+                {placing ? (
+                  <Spinner size="sm" />
+                ) : paymentMethod === "COD" ? (
+                  `Book now · Pay ${formatINR(cart?.summary.total ?? 0)} on delivery`
+                ) : (
+                  `Place order · ${formatINR(cart?.summary.total ?? 0)}`
+                )}
               </Button>
             </div>
           </div>

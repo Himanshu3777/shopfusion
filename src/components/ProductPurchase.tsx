@@ -46,7 +46,27 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
   };
 
   const buyNow = async () => {
-    if (await addToCart()) router.push("/cart");
+    // Express checkout: clear the cart, add only this item, jump to checkout.
+    setBusy(true);
+    try {
+      const clear = await fetch("/api/cart", { method: "DELETE" });
+      if (!clear.ok) throw new Error("Could not start express checkout");
+      const r = await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product.id, variantId, quantity: qty }),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.ok) {
+        router.push("/checkout");
+        return;
+      }
+      push(j?.error?.message ?? "Could not start express checkout", "error");
+    } catch {
+      push("Could not start express checkout", "error");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleWishlist = async () => {
@@ -118,7 +138,7 @@ export function ProductPurchase({ product }: { product: ProductDetailData }) {
           Add to cart · ₹{(unitPrice * qty).toLocaleString("en-IN")}
         </Button>
         <Button variant="secondary" onClick={buyNow} loading={busy} disabled={outOfStock}>
-          Buy now
+          Book now
         </Button>
         <button
           onClick={toggleWishlist}

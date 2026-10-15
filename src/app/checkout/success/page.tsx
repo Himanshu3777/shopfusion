@@ -4,7 +4,7 @@ import { formatINR } from "@/lib/pricing";
 
 export const metadata = { title: "Order Confirmed" };
 
-type PlacedOrder = { id: string; orderNumber: string; total: number };
+type PlacedOrder = { id: string; orderNumber: string; total: number; paymentProvider?: string };
 
 export default async function CheckoutSuccessPage({
   searchParams,
@@ -30,7 +30,9 @@ export default async function CheckoutSuccessPage({
       </h1>
       <p className="mt-2 text-slate-600 dark:text-slate-300">
         {orders.length > 0
-          ? `Your payment was approved and ${orders.length === 1 ? "your order is" : `${orders.length} orders are`} confirmed. A confirmation email is on its way.`
+          ? orders.some((o) => o.paymentProvider === "COD")
+            ? `Your ${orders.length === 1 ? "order is" : `${orders.length} orders are`} booked! Pay in cash when ${orders.length === 1 ? "it arrives" : "they arrive"} at your doorstep.`
+            : `Your payment was approved and ${orders.length === 1 ? "your order is" : `${orders.length} orders are`} confirmed. A confirmation email is on its way.`
           : "We couldn't find order details for this session."}
       </p>
 
@@ -41,7 +43,11 @@ export default async function CheckoutSuccessPage({
               <div>
                 <div className="font-semibold text-slate-900 dark:text-white">{o.orderNumber}</div>
                 <div className="text-sm text-slate-500">
-                  <Badge tone="success">Paid</Badge>
+                  {o.paymentProvider === "COD" ? (
+                    <Badge tone="warning">💵 Cash on Delivery</Badge>
+                  ) : (
+                    <Badge tone="success">Paid</Badge>
+                  )}
                 </div>
               </div>
               <div className="text-right">

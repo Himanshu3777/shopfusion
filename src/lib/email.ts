@@ -27,11 +27,11 @@ export function passwordResetMail(to: string, resetUrl: string) {
   });
 }
 
-export function orderConfirmationMail(to: string, orderNumber: string, total: string) {
+export function orderConfirmationMail(to: string, orderNumber: string, total: string, note?: string) {
   return sendMail({
     to,
     subject: `Order ${orderNumber} confirmed`,
-    html: `<p>Thanks for shopping with ShopFusion! Your order <b>${orderNumber}</b> (${total}) is confirmed.</p>`,
-    text: `Order ${orderNumber} (${total}) confirmed.`,
+    html: `<p>Thanks for shopping with ShopFusion! Your order <b>${orderNumber}</b> (${total}) is confirmed.</p>${note ? `<p>${note}</p>` : ""}`,
+    text: `Order ${orderNumber} (${total}) confirmed.${note ? ` ${note}` : ""}`,
   });
 }

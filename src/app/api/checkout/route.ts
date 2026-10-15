@@ -41,6 +41,7 @@ function toCouponLike(c: DbCoupon): CouponLike {
 export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await requireUser();
   const body = checkoutSchema.parse(await req.json());
+  const isCOD = body.paymentProvider === "COD";
 
   // 1. Address (own only) — snapshot onto each order.
   const address = await db.address.findFirst({
@@ -204,17 +205,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       await tx.payment.create({
         data: {
           orderId: order.id,
-          provider: "MOCK",
+          provider: isCOD ? "COD" : "MOCK",
           amount: inp.total,
           currency: "INR",
+          // COD stays PENDING until cash is collected on delivery.
           status: "PENDING",
+          rawResponse: isCOD
+            ? { mode: "cod", note: "Cash on Delivery — collect on handover" }
+            : undefined,
         },
       });
       await tx.notification.create({
         data: {
           userId: user.id,
           title: "Order confirmed",
-          body: `Order ${order.orderNumber} (${formatINR(inp.total)}) is confirmed.`,
+          body: isCOD
+            ? `Order ${order.orderNumber} (${formatINR(inp.total)}) is confirmed. Pay ${formatINR(inp.total)} in cash on delivery.`
+            : `Order ${order.orderNumber} (${formatINR(inp.total)}) is confirmed.`,
           type: "order",
         },
       });
@@ -249,44 +256,54 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   });
 
   // 7. Charge via the configured gateway (MOCK → auto PAID), then email.
-  const gateway = gatewayFor(configuredProvider());
-  const results: { id: string; orderNumber: string; total: number }[] = [];
+  //    COD orders skip the online charge entirely — cash is collected on delivery.
+  const results: { id: string; orderNumber: string; total: number; paymentProvider: string }[] = [];
+  if (!isCOD) {
+    const gateway = gatewayFor(configuredProvider());
+    for (const o of createdOrders) {
+      try {
+        const intent = await gateway.charge({
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          amount: o.total,
+          currency: "INR",
+          customerEmail: user.email,
+        });
+        await db.payment.update({
+          where: { orderId: o.id },
+          data: {
+            status: intent.status,
+            providerPaymentId: intent.providerPaymentId,
+            provider: gateway.name,
+            rawResponse: intent.raw as unknown as Prisma.InputJsonValue,
+          },
+        });
+        if (intent.status === "PAID") {
+          await db.order.update({ where: { id: o.id }, data: { paymentStatus: "PAID" } });
+        }
+      } catch (e) {
+        await db.payment.update({
+          where: { orderId: o.id },
+          data: {
+            status: "FAILED",
+            rawResponse: { error: e instanceof Error ? e.message : "Payment failed" },
+          },
+        });
+      }
+    }
+  }
   for (const o of createdOrders) {
     try {
-      const intent = await gateway.charge({
-        orderId: o.id,
-        orderNumber: o.orderNumber,
-        amount: o.total,
-        currency: "INR",
-        customerEmail: user.email,
-      });
-      await db.payment.update({
-        where: { orderId: o.id },
-        data: {
-          status: intent.status,
-          providerPaymentId: intent.providerPaymentId,
-          provider: gateway.name,
-          rawResponse: intent.raw as unknown as Prisma.InputJsonValue,
-        },
-      });
-      if (intent.status === "PAID") {
-        await db.order.update({ where: { id: o.id }, data: { paymentStatus: "PAID" } });
-      }
-    } catch (e) {
-      await db.payment.update({
-        where: { orderId: o.id },
-        data: {
-          status: "FAILED",
-          rawResponse: { error: e instanceof Error ? e.message : "Payment failed" },
-        },
-      });
-    }
-    try {
-      await orderConfirmationMail(user.email, o.orderNumber, formatINR(o.total));
+      await orderConfirmationMail(
+        user.email,
+        o.orderNumber,
+        formatINR(o.total),
+        isCOD ? "Pay in cash when your order arrives." : undefined
+      );
     } catch (e) {
       console.error("[checkout] confirmation email failed", e);
     }
-    results.push(o);
+    results.push({ ...o, paymentProvider: isCOD ? "COD" : "MOCK" });
   }
 
   return ok({ orders: results }, 201);

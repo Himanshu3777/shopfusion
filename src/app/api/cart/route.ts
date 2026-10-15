@@ -154,3 +154,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   return ok(item, 201);
 });
+
+/** Clear the whole cart — used by express "Buy Now" checkout. */
+export const DELETE = withErrorHandling(async () => {
+  const user = await requireUser();
+  const cart = await db.cart.findUnique({ where: { userId: user.id } });
+  if (cart) {
+    await db.cartItem.deleteMany({ where: { cartId: cart.id } });
+  }
+  return ok({ cleared: true });
+});
