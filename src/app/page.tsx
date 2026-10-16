@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { productCardSelect } from "@/lib/selects";
@@ -5,55 +6,20 @@ import { toProductCard, type ProductCardData } from "@/lib/catalog";
 import { ProductCard } from "@/components/ProductCard";
 import { RecentlyViewed } from "@/components/RecentlyViewed";
 import { Button } from "@/components/ui";
+import { HeroSkeleton, CategorySkeleton, ProductGridSkeleton } from "@/components/HomeSkeletons";
 
+// Each section fetches its own data so the page streams:
+// the shell renders instantly, sections appear as their queries resolve.
 
-async function getHomeData() {
-  const [banners, categories, trending, bestSellers, deals] = await Promise.all([
-    db.banner.findMany({ where: { position: "home-hero", isActive: true }, orderBy: { sortOrder: "asc" }, take: 4 }),
-    db.category.findMany({
-      where: { isActive: true, parentId: null },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      take: 8,
-    }),
-    db.product.findMany({ where: { isActive: true, isFeatured: true }, select: productCardSelect, orderBy: { createdAt: "desc" }, take: 8 }),
-    db.product.findMany({ where: { isActive: true }, select: productCardSelect, orderBy: { reviewCount: "desc" }, take: 8 }),
-    db.product.findMany({ where: { isActive: true, discountPrice: { not: null } }, select: productCardSelect, orderBy: { reviewCount: "desc" }, take: 8 }),
-  ]);
-  return {
-    banners,
-    categories,
-    trending: trending.map(toProductCard),
-    bestSellers: bestSellers.map(toProductCard),
-    deals: deals.map(toProductCard),
-  };
-}
-
-function Section({ title, href, linkLabel, items }: { title: string; href: string; linkLabel: string; items: ProductCardData[] }) {
-  if (items.length === 0) return null;
-  return (
-    <section className="mx-auto w-full max-w-7xl px-4 py-10">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-display text-xl font-bold sm:text-2xl">{title}</h2>
-        <Link href={href} className="text-sm font-medium text-fusion-700 hover:underline dark:text-fusion-300">
-          {linkLabel} →
-        </Link>
-      </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-        {items.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export default async function HomePage() {
-  const { banners, categories, trending, bestSellers, deals } = await getHomeData();
+async function HeroSection() {
+  const banners = await db.banner.findMany({
+    where: { position: "home-hero", isActive: true },
+    orderBy: { sortOrder: "asc" },
+    take: 4,
+  });
   const hero = banners[0];
-
   return (
-    <div>
-      {/* Hero */}
+    <>
       <section className="relative overflow-hidden bg-gradient-to-br from-fusion-800 via-fusion-700 to-fusion-950 text-white">
         {hero?.imageUrl && (
           <img src={hero.imageUrl} alt={hero.title} className="absolute inset-0 h-full w-full object-cover opacity-40" />
@@ -76,8 +42,6 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* Extra banners */}
       {banners.length > 1 && (
         <section className="mx-auto grid w-full max-w-7xl gap-4 px-4 pt-8 sm:grid-cols-3">
           {banners.slice(1).map((b) => (
@@ -91,37 +55,125 @@ export default async function HomePage() {
           ))}
         </section>
       )}
+    </>
+  );
+}
 
-      {/* Category tiles */}
-      {categories.length > 0 && (
-        <section className="mx-auto w-full max-w-7xl px-4 py-10">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-xl font-bold sm:text-2xl">Shop by category</h2>
-            <Link href="/products" className="text-sm font-medium text-fusion-700 hover:underline dark:text-fusion-300">All products →</Link>
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {categories.map((c) => (
-              <Link
-                key={c.id}
-                href={`/category/${c.slug}`}
-                className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
-              >
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fusion-50 text-2xl dark:bg-fusion-950">
-                  {c.image ? <img src={c.image} alt={c.name} loading="lazy" className="h-full w-full object-cover" /> : "◈"}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold group-hover:text-fusion-700 dark:group-hover:text-fusion-300">{c.name}</p>
-                  <p className="text-xs text-slate-500">Explore →</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+async function CategorySection() {
+  const categories = await db.category.findMany({
+    where: { isActive: true, parentId: null },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    take: 8,
+  });
+  if (categories.length === 0) return null;
+  return (
+    <section className="mx-auto w-full max-w-7xl px-4 py-10">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="font-display text-xl font-bold sm:text-2xl">Shop by category</h2>
+        <Link href="/products" className="text-sm font-medium text-fusion-700 hover:underline dark:text-fusion-300">All products →</Link>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {categories.map((c) => (
+          <Link
+            key={c.id}
+            href={`/category/${c.slug}`}
+            className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fusion-50 text-2xl dark:bg-fusion-950">
+              {c.image ? <img src={c.image} alt={c.name} loading="lazy" className="h-full w-full object-cover" /> : "◈"}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold group-hover:text-fusion-700 dark:group-hover:text-fusion-300">{c.name}</p>
+              <p className="text-xs text-slate-500">Explore →</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-      <Section title="Trending now" href="/products?isFeatured=true" linkLabel="View all trending" items={trending} />
-      <Section title="Best sellers" href="/products?sort=popularity" linkLabel="View all" items={bestSellers} />
-      <Section title="Deals of the day" href="/deals" linkLabel="All deals" items={deals} />
+function ProductGrid({
+  title,
+  href,
+  linkLabel,
+  items,
+}: {
+  title: string;
+  href: string;
+  linkLabel: string;
+  items: ProductCardData[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="mx-auto w-full max-w-7xl px-4 py-10">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="font-display text-xl font-bold sm:text-2xl">{title}</h2>
+        <Link href={href} className="text-sm font-medium text-fusion-700 hover:underline dark:text-fusion-300">
+          {linkLabel} →
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+        {items.map((p) => (
+          <ProductCard key={p.id} product={p} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function TrendingSection() {
+  const rows = await db.product.findMany({
+    where: { isActive: true, isFeatured: true },
+    select: productCardSelect,
+    orderBy: { createdAt: "desc" },
+    take: 8,
+  });
+  return <ProductGrid title="Trending now" href="/products?isFeatured=true" linkLabel="View all trending" items={rows.map(toProductCard)} />;
+}
+
+async function BestSellersSection() {
+  const rows = await db.product.findMany({
+    where: { isActive: true },
+    select: productCardSelect,
+    orderBy: { reviewCount: "desc" },
+    take: 8,
+  });
+  return <ProductGrid title="Best sellers" href="/products?sort=popularity" linkLabel="View all" items={rows.map(toProductCard)} />;
+}
+
+async function DealsSection() {
+  const rows = await db.product.findMany({
+    where: { isActive: true, discountPrice: { not: null } },
+    select: productCardSelect,
+    orderBy: { reviewCount: "desc" },
+    take: 8,
+  });
+  return <ProductGrid title="Deals of the day" href="/deals" linkLabel="All deals" items={rows.map(toProductCard)} />;
+}
+
+export default function HomePage() {
+  return (
+    <div>
+      <Suspense fallback={<HeroSkeleton />}>
+        <HeroSection />
+      </Suspense>
+
+      <Suspense fallback={<CategorySkeleton />}>
+        <CategorySection />
+      </Suspense>
+
+      <Suspense fallback={<ProductGridSkeleton />}>
+        <TrendingSection />
+      </Suspense>
+
+      <Suspense fallback={<ProductGridSkeleton titleWidth="w-36" />}>
+        <BestSellersSection />
+      </Suspense>
+
+      <Suspense fallback={<ProductGridSkeleton titleWidth="w-44" />}>
+        <DealsSection />
+      </Suspense>
 
       <RecentlyViewed />
     </div>
