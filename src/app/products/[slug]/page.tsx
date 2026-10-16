@@ -8,6 +8,8 @@ import { ProductPurchase } from "@/components/ProductPurchase";
 import { ProductCard } from "@/components/ProductCard";
 import { RecordView } from "@/components/RecentlyViewed";
 import { Badge, Card, RatingStars } from "@/components/ui";
+import { PriceHistorySection } from "@/components/PriceHistorySection";
+import { Suspense } from "react";
 
 
 type Props = { params: Promise<{ slug: string }> };
@@ -108,6 +110,11 @@ export default async function ProductDetailPage({ params }: Props) {
           </Card>
         )}
       </div>
+
+      {/* Price history (streams in) */}
+      <Suspense fallback={null}>
+        <PriceHistorySection productId={detail.id} />
+      </Suspense>
 
       {/* Reviews summary */}
       <Card className="mt-8 p-6">

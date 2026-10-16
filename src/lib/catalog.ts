@@ -26,6 +26,8 @@ export type ProductCardData = {
   reviewCount: number;
   isFeatured: boolean;
   createdAt: string;
+  priceTrend: string | null;
+  priceTrendAt: string | null;
   brand: { id: string; name: string; slug: string } | null;
   category: { id: string; name: string; slug: string };
   seller: { storeName: string; storeSlug: string };
@@ -48,6 +50,8 @@ export function toProductCard(p: CardRow): ProductCardData {
     reviewCount: p.reviewCount,
     isFeatured: p.isFeatured,
     createdAt: p.createdAt.toISOString(),
+    priceTrend: p.priceTrend,
+    priceTrendAt: p.priceTrendAt ? p.priceTrendAt.toISOString() : null,
     brand: p.brand,
     category: p.category,
     seller: p.seller,

@@ -1,1 +1,1 @@
-{"buildCommand":"prisma generate && prisma migrate deploy && next build"}
+{"buildCommand":"prisma generate && prisma migrate deploy && next build","crons":[{"path":"/api/cron/pricing","schedule":"0 20 * * *"}]}

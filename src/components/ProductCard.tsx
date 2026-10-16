@@ -4,6 +4,14 @@ import Link from "next/link";
 import { Badge, Button, Price, RatingStars, useToast } from "./ui";
 import type { ProductCardData } from "@/lib/catalog";
 
+/** Show trend badge only for changes in the last 7 days. */
+function isFreshTrend(trend: string | null, at: string | null): string | null {
+  if (!trend || !at) return null;
+  const ageMs = Date.now() - new Date(at).getTime();
+  if (ageMs > 7 * 24 * 3600 * 1000) return null;
+  return trend;
+}
+
 export function ProductCard({ product }: { product: ProductCardData }) {
   const { push } = useToast();
   const outOfStock = product.stock <= 0;
@@ -46,6 +54,12 @@ export function ProductCard({ product }: { product: ProductCardData }) {
         <div className="absolute left-2 top-2 flex flex-col gap-1">
           {product.discountPct > 0 && <Badge tone="danger">−{product.discountPct}%</Badge>}
           {outOfStock && <Badge tone="neutral">Out of stock</Badge>}
+          {isFreshTrend(product.priceTrend, product.priceTrendAt) === "DROP" && (
+            <Badge tone="success">📉 Price dropped</Badge>
+          )}
+          {isFreshTrend(product.priceTrend, product.priceTrendAt) === "HIKE" && (
+            <Badge tone="warning">🔥 High demand</Badge>
+          )}
         </div>
       </Link>
 
