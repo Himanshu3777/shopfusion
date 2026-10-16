@@ -15,6 +15,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { formatINR } from "@/lib/pricing";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 type Address = {
   id: string;
@@ -411,16 +412,17 @@ export default function CheckoutClient() {
                 </div>
               )}
             </Card>
-            <Card className="p-4">
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between"><dt className="text-slate-500">Subtotal</dt><dd className="font-medium">{formatINR(cart?.summary.subtotal ?? 0)}</dd></div>
-                {(cart?.summary.discount ?? 0) > 0 && (
-                  <div className="flex justify-between text-emerald-600"><dt>Discount</dt><dd>−{formatINR(cart!.summary.discount)}</dd></div>
-                )}
-                <div className="flex justify-between"><dt className="text-slate-500">Shipping</dt><dd className="font-medium">{formatINR(cart?.summary.shippingFee ?? 0)}</dd></div>
-                <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-bold dark:border-slate-700"><dt>Total</dt><dd>{formatINR(cart?.summary.total ?? 0)}</dd></div>
-              </dl>
-            </Card>
+            {cart && (
+              <PriceBreakdown
+                summary={cart.summary}
+                items={activeItems.map((it) => ({
+                  quantity: it.quantity,
+                  unitPrice: it.unitPrice,
+                  mrp: it.product.price != null ? Number(it.product.price) : null,
+                }))}
+                couponCode={cart.coupon.code}
+              />
+            )}
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
               <Button onClick={() => setStep(3)}>Continue to payment</Button>
@@ -531,15 +533,21 @@ export default function CheckoutClient() {
             </Card>
           </div>
           <div className="space-y-4">
-            <Card className="p-4">
-              <div className="flex justify-between text-base font-bold">
-                <span>Payable</span>
-                <span>{formatINR(cart?.summary.total ?? 0)}</span>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Prices and stock are revalidated securely when you place the order.
-              </p>
-            </Card>
+            {cart && (
+              <PriceBreakdown
+                summary={cart.summary}
+                items={activeItems.map((it) => ({
+                  quantity: it.quantity,
+                  unitPrice: it.unitPrice,
+                  mrp: it.product.price != null ? Number(it.product.price) : null,
+                }))}
+                couponCode={cart.coupon.code}
+                compact
+              />
+            )}
+            <p className="text-xs text-slate-500">
+              Prices and stock are revalidated securely when you place the order.
+            </p>
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep(2)}>Back</Button>
               <Button onClick={placeOrder} disabled={placing || activeItems.length === 0}>

@@ -17,6 +17,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { formatINR } from "@/lib/pricing";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 type CartImage = { url: string; alt?: string | null };
 type CartProduct = {
@@ -298,36 +299,21 @@ export default function CartClient() {
           )}
         </Card>
 
-        <Card className="p-5">
-          <h2 className="mb-3 font-semibold text-slate-900 dark:text-white">Order summary</h2>
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Subtotal ({data?.summary.itemCount} items)</dt>
-              <dd className="font-medium">{formatINR(data?.summary.subtotal ?? 0)}</dd>
-            </div>
-            {data && data.summary.discount > 0 && (
-              <div className="flex justify-between text-emerald-600">
-                <dt>Coupon discount</dt>
-                <dd className="font-medium">−{formatINR(data.summary.discount)}</dd>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Shipping</dt>
-              <dd className="font-medium">
-                {data && data.summary.shippingFee === 0 ? (
-                  <Badge tone="success">FREE</Badge>
-                ) : (
-                  formatINR(data?.summary.shippingFee ?? 0)
-                )}
-              </dd>
-            </div>
-            <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-bold dark:border-slate-700">
-              <dt>Total</dt>
-              <dd>{formatINR(data?.summary.total ?? 0)}</dd>
-            </div>
-          </dl>
+        {data && (
+          <PriceBreakdown
+            summary={data.summary}
+            items={active.map((it) => ({
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              mrp: it.product.price != null ? Number(it.product.price) : null,
+            }))}
+            couponCode={data.coupon.code}
+            compact
+          />
+        )}
+        <div className="mt-4">
           <Button
-            className="mt-4 w-full"
+            className="w-full"
             disabled={active.length === 0}
             onClick={() =>
               router.push(couponCode ? `/checkout?coupon=${encodeURIComponent(couponCode)}` : "/checkout")
@@ -338,7 +324,7 @@ export default function CartClient() {
           <p className="mt-2 text-center text-xs text-slate-500">
             Totals are recomputed securely at checkout.
           </p>
-        </Card>
+        </div>
       </div>
     </div>
   );
